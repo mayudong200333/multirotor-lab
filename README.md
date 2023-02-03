@@ -1,2 +1,2 @@
 # pybullet-multirotor
-An Drone simulator
+A Drone simulator
