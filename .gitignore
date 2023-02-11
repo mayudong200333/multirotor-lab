@@ -1,2 +1,4 @@
 # Distribution / packaging
 *.egg-info/
+venv/
+.idea/
