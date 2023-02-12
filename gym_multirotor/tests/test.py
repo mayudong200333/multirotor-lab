@@ -3,6 +3,7 @@ import os
 from time import sleep
 
 
+
 client = p.connect(p.GUI)
 p.setGravity(0, 0, -10)
 p.resetDebugVisualizerCamera(
@@ -13,5 +14,6 @@ p.resetDebugVisualizerCamera(
                 physicsClientId = client
             )
 multirotor = p.loadURDF(os.path.dirname(os.path.abspath(__file__))+'/../assets/multirotor.urdf')
+
 
 sleep(60)

@@ -4,6 +4,7 @@ import gym
 import numpy as np
 import pybullet as p
 import pybullet_data
+import xml.etree.ElementTree as etxml
 
 class DroneModel(Enum):
     MULTIROTOR = "multirotor"
@@ -31,6 +32,7 @@ class BaseDroneEnv(gym.Env):
         self.urdf = self.drone_model.value + ".urdf"
         self.initial_position = initial_position
         self.R = 3 if num_drones != 1 else 0
+        self.kf,self.km = self._parseURDFParameters()
 
         ## connect to PyBullet ##
         if self.gui:
@@ -63,14 +65,31 @@ class BaseDroneEnv(gym.Env):
         self._constructDrones()
         self._createMap()
 
-        ## update and stores the
+        self._updateKinetic()
+
     def step(self,action):
         self.last_action = np.reshape(action,(self.num_drones,4))
         clipped_action = np.reshape(self._preprocessAction(action),(self.num_drones,4))
 
+        for _ in range(self.aggr_phy_steps):
+            for i in range(self.num_drones):
+                self._physics(clipped_action[i,:],i)
 
-    
+            p.stepSimulation(physicsClientId=self.client)
+
+        self._updateKinetic()
+
+        obs = self._computeObs()
+        reward = self._computeReward()
+        done = self._computeDone()
+        info = self._computeInfo()
+
+        self.step_counter += self.aggr_phy_steps
+
+        return obs,reward,done,info
+
     def reset(self):
+        self.step_counter = 0
         p.resetSimulation(physicsClientId=self.client)
         self._constructDrones()
         self._createMap()
@@ -78,10 +97,25 @@ class BaseDroneEnv(gym.Env):
         return self._computeObs()
     
     def render(self):
-        pass 
+        for i in range(self.num_drones):
+            print("[INFO] BaseDroneEnv.render() ——— drone {:d}".format(i),
+                  "——— x {:+06.2f}, y {:+06.2f}, z {:+06.2f}".format(self.pos[i, 0], self.pos[i, 1], self.pos[i, 2]),
+                  "——— velocity {:+06.2f}, {:+06.2f}, {:+06.2f}".format(self.vel[i, 0], self.vel[i, 1], self.vel[i, 2]),
+                  "——— roll {:+06.2f}, pitch {:+06.2f}, yaw {:+06.2f}".format(self.rpy[i, 0] * 180 / np.pi,
+                                                                              self.rpy[i, 1] * 180 / np.pi,
+                                                                              self.rpy[i, 2] * 180 / np.pi),
+                  "——— angular velocity {:+06.4f}, {:+06.4f}, {:+06.4f} ——— ".format(self.ang_v[i, 0], self.ang_v[i, 1],
+                                                                                     self.ang_v[i, 2]))
     
     def close(self):
-        pass
+        p.disconnect(physicsClientId=self.client)
+
+    def _parseURDFParameters(self):
+        tree = etxml.parse(os.path.dirname(os.path.abspath(__file__))+'/../assets/multirotor.urdf').getroot()
+        kf = float(tree[0].attrib['kf'])
+        km = float(tree[0].attrib['km'])
+
+        return kf,km
 
     def _constructDrones(self):
         ## initialize Drones obs ##
@@ -111,6 +145,27 @@ class BaseDroneEnv(gym.Env):
             self.rpy[i] = p.getEulerFromQuaternion(self.quat[i])
             self.vel[i],self.ang_v[i] = p.getBaseVelocity(self.drone_ids[i],physicsClientId = self.client)
 
+    def _physics(self,rpm,nth_drone):
+        if self.drone_model == DroneModel.MULTIROTOR:
+            forces = np.array(rpm**2)*self.kf
+            torques = np.array(rpm**2)*self.km
+            z_torque = (-torques[0] + torques[1] - torques[0] + torques[1])
+            for i in range(4):
+                p.applyExternalForce(self.drone_ids[nth_drone],
+                                     i,
+                                     forceObj=[0,0,forces[i]],
+                                     flags=p.LINK_FRAME,
+                                     physicsClientId=self.client)
+            p.applyExternalTorque(self.drone_ids[nth_drone],
+                                  4,
+                                  torqueObj=[0, 0, z_torque],
+                                  flags=p.LINK_FRAME,
+                                  physicsClientId=self.client
+                                  )
+        else:
+            ## For TILTROTOR, UNCOMPLETED
+            pass
+
     def _createMap(self):
         pass
 
@@ -120,11 +175,21 @@ class BaseDroneEnv(gym.Env):
     def _observationSpace(self):
         return NotImplementedError
 
+    def _preprocessAction(self,action):
+        return NotImplementedError
+
     def _computeObs(self):
         return NotImplementedError
 
-    def _preprocessAction(self):
+    def _computeReward(self):
         return NotImplementedError
+
+    def _computeDone(self):
+        return NotImplementedError
+
+    def _computeInfo(self):
+        return NotImplementedError
+
 
 if __name__ == '__main__':
     pass
