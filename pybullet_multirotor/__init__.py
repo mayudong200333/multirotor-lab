@@ -1,6 +1,6 @@
-from gym.envs.registration import register
+from gymnasium.envs.registration import register
 
 register(
-    id = 'control-v0',
-    entry_point= 'pybullet_multirotor.envs:ControlDroneEnv'
+    id='control-v0',
+    entry_point='pybullet_multirotor.envs:ControlDroneEnv'
 )
