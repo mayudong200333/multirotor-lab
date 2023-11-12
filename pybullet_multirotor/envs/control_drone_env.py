@@ -1,7 +1,8 @@
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 
-from pybullet_multirotor.envs.base_drone_env import BaseDroneEnv,DroneModel
+from pybullet_multirotor.envs.base_drone_env import BaseDroneEnv, DroneModel
+
 
 class ControlDroneEnv(BaseDroneEnv):
 
@@ -20,35 +21,34 @@ class ControlDroneEnv(BaseDroneEnv):
                          aggr_phy_steps=aggr_phy_steps,
                          gui=gui)
 
-
     def _actionSpace(self):
         if self.drone_model == DroneModel.MULTIROTOR:
-            act_lower_bound = np.array([[0.]*4 for _ in range(self.num_drones)])
-            act_upper_bound = np.array([[self.max_rpm]*4 for _ in range(self.num_drones)])
+            act_lower_bound = np.array([[0.] * 4 for _ in range(self.num_drones)])
+            act_upper_bound = np.array([[self.max_rpm] * 4 for _ in range(self.num_drones)])
         else:
             return NotImplementedError
 
-        return spaces.Box(low=act_lower_bound,high=act_upper_bound,dtype=np.float32)
+        return spaces.Box(low=act_lower_bound, high=act_upper_bound, dtype=np.float32)
 
     def _observationSpace(self):
         if self.drone_model == DroneModel.MULTIROTOR:
             ## Observation vector: [X,Y,Z,R,P,Y]
-            obs_lower_bound = np.array([[-np.inf,-np.inf,0.,-np.pi,-np.pi,-np.pi] for _ in range(self.num_drones)])
-            obs_upper_bound = np.array([[np.inf,np.inf,0.,np.pi,np.pi,np.pi] for _ in range(self.num_drones)])
+            obs_lower_bound = np.array([[-np.inf, -np.inf, 0., -np.pi, -np.pi, -np.pi] for _ in range(self.num_drones)])
+            obs_upper_bound = np.array([[np.inf, np.inf, 0., np.pi, np.pi, np.pi] for _ in range(self.num_drones)])
         else:
             return NotImplementedError
 
-        return spaces.Box(low=obs_lower_bound,high=obs_upper_bound,dtype=np.float32)
+        return spaces.Box(low=obs_lower_bound, high=obs_upper_bound, dtype=np.float32)
 
     def _computeObs(self):
-        obs = np.hstack([self.pos,self.rpy])
+        obs = np.hstack([self.pos, self.rpy])
 
         return obs
 
     def _preprocessAction(self, action):
-        clipped_action = np.zeros((self.num_drones,4))
+        clipped_action = np.zeros((self.num_drones, 4))
         for i in range(self.num_drones):
-            clipped_action[i,:] = np.clip(action[i,:],0,self.max_rpm)
+            clipped_action[i, :] = np.clip(action[i, :], 0, self.max_rpm)
 
         return clipped_action
 
@@ -60,8 +60,3 @@ class ControlDroneEnv(BaseDroneEnv):
 
     def _computeInfo(self):
         return {"GOOD"}
-
-
-
-
-

@@ -2,7 +2,7 @@ import os
 import xml.etree.ElementTree as etxml
 from enum import Enum
 
-import gym
+import gymnasium as gym
 import numpy as np
 import pybullet as p
 import pybullet_data
@@ -37,7 +37,7 @@ class BaseDroneEnv(gym.Env):
         self.initial_position = initial_position
         self.R = 3 if num_drones != 1 else 0
         self.kf, self.km, self.thrust2weight = self._parseURDFParameters()
-        self.max_rpm = np.sqrt((self.thrust2weight * 9.8)/(4*self.kf))
+        self.max_rpm = np.sqrt((self.thrust2weight * 9.8) / (4 * self.kf))
 
         ## connect to PyBullet ##
         if self.gui:
@@ -142,10 +142,9 @@ class BaseDroneEnv(gym.Env):
         self.plane_id = p.loadURDF("plane.urdf", physicsClientId=self.client)
         self.drone_ids = np.array([p.loadURDF(os.path.dirname(os.path.abspath(__file__)) + "/../assets/" + self.urdf,
                                               basePosition=self.initial_position[i, :],
-                                              baseOrientation=p.getQuaternionFromEuler(self.initial_rpys[i,:]),
+                                              baseOrientation=p.getQuaternionFromEuler(self.initial_rpys[i, :]),
                                               physicsClientId=self.client)
                                    for i in range(self.num_drones)])
-
 
     def _updateKinetic(self):
         for i in range(self.num_drones):
@@ -162,7 +161,7 @@ class BaseDroneEnv(gym.Env):
                 p.applyExternalForce(self.drone_ids[nth_drone],
                                      i,
                                      forceObj=[0, 0, forces[i]],
-                                     posObj = [0,0,0],
+                                     posObj=[0, 0, 0],
                                      flags=p.LINK_FRAME,
                                      physicsClientId=self.client)
             p.applyExternalTorque(self.drone_ids[nth_drone],
@@ -198,6 +197,3 @@ class BaseDroneEnv(gym.Env):
 
     def _computeInfo(self):
         return NotImplementedError
-
-
-
