@@ -25,9 +25,11 @@ class BaseDroneEnv(gym.Env):
                  gui=False,
                  ):
 
-        ## parameters ##
+        # parameters
         self.drone_model = drone_model
         self.num_drones = num_drones
+        self.last_action = -1 * np.ones((self.num_drones, 4))
+        self.last_clipped_action = np.zeros((self.num_drones, 4))
         self.freq = freq
         self.timestep = 1 / self.freq
         self.aggr_phy_steps = aggr_phy_steps
@@ -36,10 +38,10 @@ class BaseDroneEnv(gym.Env):
         self.urdf = self.drone_model.value + ".urdf"
         self.initial_position = initial_position
         self.R = 3 if num_drones != 1 else 0
-        self.kf, self.km, self.thrust2weight = self._parseURDFParameters()
+        self.kf, self.km, self.thrust2weight = self._parse_urdf_parameters()
         self.max_rpm = np.sqrt((self.thrust2weight * 9.8) / (4 * self.kf))
 
-        ## connect to PyBullet ##
+        # connect to PyBullet
         if self.gui:
             self.client = p.connect(p.GUI)
             p.resetDebugVisualizerCamera(
@@ -52,7 +54,7 @@ class BaseDroneEnv(gym.Env):
         else:
             self.client = p.connect(p.DIRECT)
 
-        ## set initial poses ##
+        # set initial poses
         if self.initial_position is None:
             self.initial_position = np.vstack(
                 (
@@ -63,44 +65,46 @@ class BaseDroneEnv(gym.Env):
             ).transpose().reshape((self.num_drones, 3))
         self.initial_rpys = np.zeros((self.num_drones, 3))
 
-        ## get action and observation space ##
-        self.action_space = self._actionSpace()
-        self.observation_space = self._observationSpace()
+        # get action and observation space
+        self.action_space = self._action_space()
+        self.observation_space = self._observation_space()
 
-        ## initialize the pybullet env ##
-        self._constructDrones()
-        self._createMap()
+        # initialize the pybullet env
+        self._construct_drones()
+        self._create_map()
 
-        self._updateKinetic()
+        self._update_kinetic()
 
     def step(self, action):
         self.last_action = np.reshape(action, (self.num_drones, 4))
-        clipped_action = np.reshape(self._preprocessAction(action), (self.num_drones, 4))
+        clipped_action = np.reshape(self._preprocess_action(action), (self.num_drones, 4))
 
         for _ in range(self.aggr_phy_steps):
             for i in range(self.num_drones):
                 self._physics(clipped_action[i, :], i)
 
             p.stepSimulation(physicsClientId=self.client)
+            self.last_clipped_action = clipped_action
 
-        self._updateKinetic()
+        self._update_kinetic()
 
-        obs = self._computeObs()
-        reward = self._computeReward()
-        done = self._computeDone()
-        info = self._computeInfo()
+        obs = self._compute_obs()
+        reward = self._compute_reward()
+        truncated = self._compute_truncated()
+        done = self._compute_done()
+        info = self._compute_info()
 
         self.step_counter += self.aggr_phy_steps
 
-        return obs, reward, done, info
+        return obs, reward, done, truncated, info
 
-    def reset(self):
+    def reset(self, seed: int = 0, options: dict = None):
         self.step_counter = 0
         p.resetSimulation(physicsClientId=self.client)
-        self._constructDrones()
-        self._createMap()
-        self._updateKinetic()
-        return self._computeObs()
+        self._construct_drones()
+        self._create_map()
+        self._update_kinetic()
+        return self._compute_obs(), self._compute_info()
 
     def render(self):
         for i in range(self.num_drones):
@@ -116,29 +120,29 @@ class BaseDroneEnv(gym.Env):
     def close(self):
         p.disconnect(physicsClientId=self.client)
 
-    def _parseURDFParameters(self):
+    @staticmethod
+    def _parse_urdf_parameters():
         tree = etxml.parse(os.path.dirname(os.path.abspath(__file__)) + '/../assets/multirotor.urdf').getroot()
         kf = float(tree[0].attrib['kf'])
         km = float(tree[0].attrib['km'])
         thrust2weight = float(tree[0].attrib['thrust2weight'])
-
         return kf, km, thrust2weight
 
-    def _constructDrones(self):
-        ## initialize Drones obs ##
+    def _construct_drones(self):
+        # initialize Drones obs
         self.pos = np.zeros((self.num_drones, 3))
         self.quat = np.zeros((self.num_drones, 4))
         self.rpy = np.zeros((self.num_drones, 3))
         self.vel = np.zeros((self.num_drones, 3))
         self.ang_v = np.zeros((self.num_drones, 3))
 
-        ## initialize pybullet ##
+        # initialize pybullet
         p.setGravity(0, 0, -9.8, physicsClientId=self.client)
         p.setRealTimeSimulation(0, physicsClientId=self.client)
         p.setTimeStep(self.timestep, physicsClientId=self.client)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
-        ## Load drone model ##
+        # Load drone model
         self.plane_id = p.loadURDF("plane.urdf", physicsClientId=self.client)
         self.drone_ids = np.array([p.loadURDF(os.path.dirname(os.path.abspath(__file__)) + "/../assets/" + self.urdf,
                                               basePosition=self.initial_position[i, :],
@@ -146,7 +150,7 @@ class BaseDroneEnv(gym.Env):
                                               physicsClientId=self.client)
                                    for i in range(self.num_drones)])
 
-    def _updateKinetic(self):
+    def _update_kinetic(self):
         for i in range(self.num_drones):
             self.pos[i], self.quat[i] = p.getBasePositionAndOrientation(self.drone_ids[i], physicsClientId=self.client)
             self.rpy[i] = p.getEulerFromQuaternion(self.quat[i])
@@ -171,29 +175,40 @@ class BaseDroneEnv(gym.Env):
                                   physicsClientId=self.client
                                   )
         else:
-            ## For TILTROTOR, UNCOMPLETED
+            # For TILTROTOR, UNCOMPLETED
             pass
 
-    def _createMap(self):
+    def _get_drone_state_vector(self,
+                                nth_drone
+                                ):
+        """Returns the state vector of the n-th drone."""
+        state = np.hstack([self.pos[nth_drone, :], self.quat[nth_drone, :], self.rpy[nth_drone, :],
+                           self.vel[nth_drone, :], self.ang_v[nth_drone, :], self.last_clipped_action[nth_drone, :]])
+        return state.reshape(20, )
+
+    def _create_map(self):
         pass
 
-    def _actionSpace(self):
+    def _action_space(self):
         return NotImplementedError
 
-    def _observationSpace(self):
+    def _observation_space(self):
         return NotImplementedError
 
-    def _preprocessAction(self, action):
+    def _preprocess_action(self, action):
         return NotImplementedError
 
-    def _computeObs(self):
+    def _compute_obs(self):
         return NotImplementedError
 
-    def _computeReward(self):
+    def _compute_reward(self):
         return NotImplementedError
 
-    def _computeDone(self):
+    def _compute_done(self):
         return NotImplementedError
 
-    def _computeInfo(self):
+    def _compute_info(self):
         return NotImplementedError
+
+    def _compute_truncated(self):
+        return False
