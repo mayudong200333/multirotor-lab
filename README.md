@@ -15,7 +15,7 @@ This is a lab for multirotor control and path planning.
 
 ## Examples
 
-try to run the environment
+Try to run the environment.
 
 ```bash
 poetry run python pybullet_multirotor/examples/simple.py
